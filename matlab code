@@ -1,0 +1,206 @@
+
+%% STEPPED DISTANCE PROTECTION FOR POWER SYSTEM
+% Assignment 13
+% Distance protection using three protection zones
+
+clc;
+clear;
+close all;
+
+%% 1. TRANSMISSION LINE PARAMETERS
+
+L = 100;                  % Main transmission line length (km)
+R_per_km = 0.05;         % Resistance per km (ohm)
+X_per_km = 0.40;         % Reactance per km (ohm)
+
+Z_per_km = R_per_km + 1j*X_per_km;
+
+V_phase = 132e3/sqrt(3); % Phase voltage (V)
+f = 50;                   % Frequency (Hz)
+
+%% 2. DISTANCE PROTECTION SETTINGS
+
+Zone1 = 0.80*L;          % 80% line coverage
+Zone2 = 1.20*L;          % 120% line coverage
+Zone3 = 2.00*L;          % 200% line coverage
+
+T1 = 0.00;                % Zone 1 trip time
+T2 = 0.30;                % Zone 2 trip time
+T3 = 0.60;                % Zone 3 trip time
+
+%% 3. FAULT LOCATIONS TO TEST
+
+fault_locations = [20 50 75 90 110 150];
+
+%% 4. SIMULATION TIME
+
+dt = 0.001;
+t = 0:dt:1;
+
+fault_start = 0.10;       % Fault occurs at 0.1 seconds
+
+%% 5. CREATE RESULT ARRAYS
+
+results_distance = [];
+results_impedance = [];
+results_zone = [];
+results_trip_time = [];
+
+%% 6. SIMULATE EACH FAULT
+
+for k = 1:length(fault_locations)
+
+    fault_distance = fault_locations(k);
+
+    % Fault impedance from relay to fault point
+    Z_fault = fault_distance*Z_per_km;
+
+    % Simulated fault current (simplified phase-to-phase equivalent)
+    I_fault = V_phase/abs(Z_fault);
+
+    % Voltage and current before fault
+    V = V_phase*ones(size(t));
+    I = 100*ones(size(t));    % Normal load current (assumed)
+
+    % Fault begins
+    fault_index = find(t >= fault_start,1);
+
+    V(fault_index:end) = 0.2*V_phase;
+    I(fault_index:end) = I_fault;
+
+    %% 7. CALCULATE APPARENT IMPEDANCE
+
+    Z_measured = V_phase/I_fault;
+
+    %% 8. DISTANCE ESTIMATION
+
+    estimated_distance = abs(Z_measured)/abs(Z_per_km);
+
+    %% 9. DETERMINE PROTECTION ZONE
+
+    if estimated_distance <= Zone1
+
+        zone = 1;
+        trip_time = T1;
+
+    elseif estimated_distance <= Zone2
+
+        zone = 2;
+        trip_time = T2;
+
+    elseif estimated_distance <= Zone3
+
+        zone = 3;
+        trip_time = T3;
+
+    else
+
+        zone = 0;
+        trip_time = NaN;
+
+    end
+
+    %% 10. CIRCUIT BREAKER OPERATION
+
+    if zone ~= 0
+
+        breaker_trip = fault_start + trip_time;
+
+        breaker_index = find(t >= breaker_trip,1);
+
+        if ~isempty(breaker_index)
+
+            V(breaker_index:end) = 0;
+            I(breaker_index:end) = 0;
+
+        end
+
+    else
+
+        breaker_trip = NaN;
+
+    end
+
+    %% 11. SAVE RESULTS
+
+    results_distance(end+1) = fault_distance;
+    results_impedance(end+1) = abs(Z_measured);
+    results_zone(end+1) = zone;
+    results_trip_time(end+1) = trip_time;
+
+    %% 12. PLOT VOLTAGE
+
+    figure;
+
+    subplot(2,1,1);
+
+    plot(t,V/1000,'LineWidth',1.5);
+
+    grid on;
+
+    xlabel('Time (s)');
+    ylabel('Voltage (kV)');
+
+    title(['Voltage for Fault at ', ...
+        num2str(fault_distance),' km']);
+
+    %% 13. PLOT CURRENT
+
+    subplot(2,1,2);
+
+    plot(t,I,'LineWidth',1.5);
+
+    grid on;
+
+    xlabel('Time (s)');
+    ylabel('Current (A)');
+
+    title('Fault Current and Breaker Operation');
+
+end
+
+%% 14. DISPLAY RESULTS TABLE
+
+Results = table(results_distance', ...
+                results_impedance', ...
+                results_zone', ...
+                results_trip_time', ...
+                'VariableNames', ...
+                {'FaultDistance_km', ...
+                 'MeasuredImpedance_ohm', ...
+                 'ProtectionZone', ...
+                 'TripTime_sec'});
+
+disp('STEPPED DISTANCE PROTECTION RESULTS');
+
+disp(Results);
+
+%% 15. PLOT DISTANCE VS PROTECTION ZONE
+
+figure;
+
+stairs(results_distance,results_zone,'LineWidth',2);
+
+grid on;
+
+xlabel('Fault Distance (km)');
+ylabel('Protection Zone');
+
+title('Fault Distance vs Protection Zone');
+
+yticks([0 1 2 3]);
+
+%% 16. PLOT DISTANCE VS TRIP TIME
+
+figure;
+
+plot(results_distance,results_trip_time, ...
+     'o-','LineWidth',2);
+
+grid on;
+
+xlabel('Fault Distance (km)');
+ylabel('Trip Time (seconds)');
+
+title('Distance Protection Operating Time');
+
